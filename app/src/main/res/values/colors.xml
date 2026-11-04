@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Niebla fría, interfaz de madera quemada y bronce -->
+    <color name="fog">#FF14181F</color>
+    <color name="wood_dark">#FF1B130C</color>
+    <color name="wood">#FF2C1F14</color>
+    <color name="wood_light">#FF3F2C1C</color>
+    <color name="edge">#FF0D0905</color>
+    <color name="bronze">#FFB8874A</color>
+    <color name="bronze_dark">#FF6E4E2A</color>
+    <color name="gold">#FFE8B04A</color>
+    <color name="ember">#FFE0782F</color>
+    <color name="ember_dark">#FFA9501C</color>
+    <color name="on_ember">#FF1A0F06</color>
+    <color name="parchment">#FFEADCC0</color>
+    <color name="muted">#FFA8977C</color>
+    <color name="track">#FF3A2A1C</color>
+    <color name="moss">#FF8DAA5E</color>
+    <color name="forest">#FF4F7A45</color>
+    <color name="blood">#FFA63D2F</color>
+    <color name="eye">#FF7FE0C8</color>
+    <color name="launcher_bg">#FF1B130C</color>
+</resources>

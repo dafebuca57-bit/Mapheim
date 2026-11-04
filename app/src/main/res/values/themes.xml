@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.Mapheim" parent="Theme.Material3.Dark.NoActionBar">
+        <item name="colorPrimary">@color/gold</item>
+        <item name="colorOnPrimary">@color/on_ember</item>
+        <item name="colorSecondary">@color/moss</item>
+        <item name="colorSurface">@color/wood</item>
+        <item name="colorOnSurface">@color/parchment</item>
+        <item name="colorSurfaceContainer">@color/wood</item>
+        <item name="colorSurfaceContainerHigh">@color/wood</item>
+        <item name="android:statusBarColor">@color/wood_dark</item>
+        <item name="android:navigationBarColor">@color/wood_dark</item>
+    </style>
+</resources>

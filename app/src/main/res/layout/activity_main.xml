@@ -1,0 +1,330 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/fog">
+
+    <org.osmdroid.views.MapView
+        android:id="@+id/map"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+    <!-- Tablilla superior: progreso de Hannover -->
+    <LinearLayout
+        android:id="@+id/hud"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top"
+        android:layout_margin="10dp"
+        android:background="@drawable/panel_wood"
+        android:elevation="8dp"
+        android:orientation="vertical"
+        android:paddingStart="18dp"
+        android:paddingTop="14dp"
+        android:paddingEnd="18dp"
+        android:paddingBottom="14dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="bottom"
+            android:orientation="horizontal">
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="@font/uncial"
+                    android:text="Hannover"
+                    android:textColor="@color/parchment"
+                    android:textSize="22sp" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:letterSpacing="0.3"
+                    android:text="ᚺᚨᚾᚾᛟᚹᛖᚱ"
+                    android:textColor="@color/bronze_dark"
+                    android:textSize="11sp" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/tvPct"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:fontFamily="@font/cinzel_bold"
+                android:text="0,00 %"
+                android:textColor="@color/gold"
+                android:textSize="24sp" />
+        </LinearLayout>
+
+        <com.google.android.material.progressindicator.LinearProgressIndicator
+            android:id="@+id/pbPct"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:max="1000"
+            app:indicatorColor="@color/ember"
+            app:trackColor="@color/track"
+            app:trackCornerRadius="2dp"
+            app:trackThickness="7dp"
+            xmlns:app="http://schemas.android.com/apk/res-auto" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:orientation="horizontal">
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:id="@+id/tvKm"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="@font/cinzel_bold"
+                    android:text="0,0"
+                    android:textColor="@color/parchment"
+                    android:textSize="18sp" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="@font/cinzel"
+                    android:letterSpacing="0.06"
+                    android:text="KM CAMINADOS"
+                    android:textColor="@color/muted"
+                    android:textSize="10sp" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:id="@+id/tvPois"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="@font/cinzel_bold"
+                    android:text="0/0"
+                    android:textColor="@color/parchment"
+                    android:textSize="18sp" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="@font/cinzel"
+                    android:letterSpacing="0.06"
+                    android:text="LUGARES"
+                    android:textColor="@color/muted"
+                    android:textSize="10sp" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:id="@+id/tvAch"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="@font/cinzel_bold"
+                    android:text="0/0"
+                    android:textColor="@color/parchment"
+                    android:textSize="18sp" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="@font/cinzel"
+                    android:letterSpacing="0.06"
+                    android:text="HAZAÑAS"
+                    android:textColor="@color/muted"
+                    android:textSize="10sp" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/eyesBox"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1.2"
+                android:orientation="vertical">
+
+                <LinearLayout
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <ImageView
+                        android:layout_width="18dp"
+                        android:layout_height="18dp"
+                        android:layout_marginEnd="5dp"
+                        android:importantForAccessibility="no"
+                        android:src="@drawable/ic_eye" />
+
+                    <TextView
+                        android:id="@+id/tvEyes"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:fontFamily="@font/cinzel_bold"
+                        android:text="0"
+                        android:textColor="#FF7FE0C8"
+                        android:textSize="18sp" />
+                </LinearLayout>
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="@font/cinzel"
+                    android:letterSpacing="0.06"
+                    android:text="OJOS"
+                    android:textColor="@color/muted"
+                    android:textSize="10sp" />
+            </LinearLayout>
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- Aviso flotante -->
+    <TextView
+        android:id="@+id/banner"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|center_horizontal"
+        android:layout_marginStart="28dp"
+        android:layout_marginTop="170dp"
+        android:layout_marginEnd="28dp"
+        android:background="@drawable/panel_wood"
+        android:elevation="10dp"
+        android:fontFamily="@font/cinzel_bold"
+        android:gravity="center"
+        android:lineSpacingExtra="2dp"
+        android:paddingStart="22dp"
+        android:paddingTop="14dp"
+        android:paddingEnd="22dp"
+        android:paddingBottom="14dp"
+        android:textColor="@color/parchment"
+        android:textSize="15sp"
+        android:visibility="gone" />
+
+    <!-- Escudos de acción -->
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|end"
+        android:layout_margin="16dp"
+        android:gravity="end"
+        android:orientation="vertical">
+
+        <ImageButton
+            android:id="@+id/btnMenu"
+            android:layout_width="50dp"
+            android:layout_height="50dp"
+            android:layout_marginBottom="10dp"
+            android:background="@drawable/btn_shield"
+            android:contentDescription="Menú"
+            android:elevation="6dp"
+            android:padding="14dp"
+            android:scaleType="fitCenter"
+            android:src="@drawable/ic_more"
+            android:tint="@color/parchment" />
+
+        <ImageButton
+            android:id="@+id/btnShop"
+            android:layout_width="50dp"
+            android:layout_height="50dp"
+            android:layout_marginBottom="10dp"
+            android:background="@drawable/btn_shield"
+            android:contentDescription="Mercader"
+            android:elevation="6dp"
+            android:padding="11dp"
+            android:scaleType="fitCenter"
+            android:src="@drawable/ic_eye" />
+
+        <ImageButton
+            android:id="@+id/btnAch"
+            android:layout_width="50dp"
+            android:layout_height="50dp"
+            android:layout_marginBottom="10dp"
+            android:background="@drawable/btn_shield"
+            android:contentDescription="Hazañas"
+            android:elevation="6dp"
+            android:padding="14dp"
+            android:scaleType="fitCenter"
+            android:src="@drawable/ic_trophy"
+            android:tint="@color/gold" />
+
+        <ImageButton
+            android:id="@+id/btnPin"
+            android:layout_width="50dp"
+            android:layout_height="50dp"
+            android:layout_marginBottom="10dp"
+            android:background="@drawable/btn_shield"
+            android:contentDescription="Poner un pin aquí"
+            android:elevation="6dp"
+            android:padding="13dp"
+            android:scaleType="fitCenter"
+            android:src="@drawable/ic_pin"
+            android:tint="@color/ember" />
+
+        <ImageButton
+            android:id="@+id/btnLocate"
+            android:layout_width="50dp"
+            android:layout_height="50dp"
+            android:layout_marginBottom="14dp"
+            android:background="@drawable/btn_shield"
+            android:contentDescription="Centrar en mi ubicación"
+            android:elevation="6dp"
+            android:padding="13dp"
+            android:scaleType="fitCenter"
+            android:src="@drawable/ic_locate"
+            android:tint="@color/parchment" />
+
+        <LinearLayout
+            android:id="@+id/btnTrack"
+            android:layout_width="wrap_content"
+            android:layout_height="52dp"
+            android:background="@drawable/btn_ember"
+            android:clickable="true"
+            android:contentDescription="Explorar"
+            android:elevation="8dp"
+            android:focusable="true"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="18dp"
+            android:paddingEnd="22dp">
+
+            <ImageView
+                android:id="@+id/ivTrack"
+                android:layout_width="22dp"
+                android:layout_height="22dp"
+                android:importantForAccessibility="no"
+                android:src="@drawable/ic_play"
+                android:tint="@color/on_ember" />
+
+            <TextView
+                android:id="@+id/tvTrack"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:fontFamily="@font/cinzel_bold"
+                android:letterSpacing="0.08"
+                android:text="EXPLORAR"
+                android:textColor="@color/on_ember"
+                android:textSize="16sp" />
+        </LinearLayout>
+    </LinearLayout>
+</FrameLayout>

@@ -1,0 +1,39 @@
+name: Compilar iOS (.ipa)
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Versión de Xcode
+        run: xcodebuild -version
+
+      - name: Instalar XcodeGen
+        run: brew install xcodegen
+
+      - name: Generar proyecto
+        working-directory: ios
+        run: xcodegen generate
+
+      - name: Compilar (sin firmar)
+        working-directory: ios
+        run: |
+          xcodebuild -project Mapheim.xcodeproj -scheme Mapheim -configuration Release \
+            -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build
+
+      - name: Empaquetar .ipa
+        run: |
+          mkdir -p Payload
+          cp -R ios/build/Build/Products/Release-iphoneos/Mapheim.app Payload/
+          zip -qry Mapheim.ipa Payload
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Mapheim-ipa
+          path: Mapheim.ipa
