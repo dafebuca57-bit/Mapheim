@@ -4,6 +4,9 @@ on:
   push:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: macos-14
@@ -37,3 +40,9 @@ jobs:
         with:
           name: Mapheim-ipa
           path: Mapheim.ipa
+      - name: Publicar en Releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create ios-latest Mapheim.ipa --title "Mapheim para iPhone" --notes "Instala Mapheim.ipa con Sideloadly (ver INSTALAR.md)." --prerelease \
+            || gh release upload ios-latest Mapheim.ipa --clobber
