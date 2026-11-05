@@ -146,7 +146,7 @@ class MainActivity : AppCompatActivity(), GameState.Listener {
         map.overlayManager.tilesOverlay.loadingLineColor = color(R.color.fog)
 
         val d = resources.displayMetrics.density
-        offlineOverlay = OfflineMapOverlay(d)
+        offlineOverlay = OfflineMapOverlay(d, cinzelBold)
         map.overlays.add(offlineOverlay)
         map.overlays.add(MapEventsOverlay(object : MapEventsReceiver {
             override fun singleTapConfirmedHelper(p: GeoPoint?): Boolean = false
@@ -499,7 +499,11 @@ class MainActivity : AppCompatActivity(), GameState.Listener {
             isCheckable = true
             isChecked = GameState.testMode
         }
-        pm.menu.add(0, 5, 3, if (OfflineMap.ready) "Actualizar mapa descargado" else "Descargar mapa de Hannover")
+        pm.menu.add(0, 5, 3, when {
+            !OfflineMap.ready -> "Descargar mapa de Hannover"
+            OfflineMap.missingNames -> "Actualizar mapa (agrega nombres de calles)"
+            else -> "Actualizar mapa descargado"
+        })
         if (OfflineMap.ready) {
             pm.menu.add(0, 6, 4, "Usar siempre el mapa descargado").apply {
                 isCheckable = true
@@ -545,9 +549,9 @@ class MainActivity : AppCompatActivity(), GameState.Listener {
             return
         }
         val msg = if (OfflineMap.ready)
-            "Vuelve a descargar las calles, senderos, agua, parques y bosques de Hannover para tener los cambios más recientes."
+            "Vuelve a descargar las calles (con sus nombres), senderos, agua, parques y bosques de Hannover para tener los cambios más recientes."
         else
-            "Se descargan las calles, senderos, ríos, lagos, parques y bosques de Hannover (unos 5 a 15 MB). Después el mapa funciona sin internet. Usa Wi‑Fi si puedes; tarda 1 o 2 minutos."
+            "Se descargan las calles con sus nombres, senderos, ríos, lagos, parques y bosques de Hannover (unos 5 a 15 MB). Después el mapa funciona sin internet. Usa Wi‑Fi si puedes; tarda 1 o 2 minutos."
         vikingDialog(if (OfflineMap.ready) "Actualizar mapa" else "Mapa sin conexión")
             .setMessage(msg)
             .setNegativeButton("Cancelar", null)

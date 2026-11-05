@@ -111,8 +111,8 @@ struct ContentView: View {
             Button("Descargar") { startDownload() }
         } message: {
             Text(game.offlineReady
-                 ? "Vuelve a descargar las calles, senderos, agua, parques y bosques de Hannover para tener los cambios más recientes."
-                 : "Se descargan las calles, senderos, ríos, lagos, parques y bosques de Hannover (unos 5 a 15 MB). Después el mapa funciona sin internet. Usa Wi‑Fi si puedes; tarda 1 o 2 minutos.")
+                 ? "Vuelve a descargar las calles (con sus nombres), senderos, agua, parques y bosques de Hannover para tener los cambios más recientes."
+                 : "Se descargan las calles con sus nombres, senderos, ríos, lagos, parques y bosques de Hannover (unos 5 a 15 MB). Después el mapa funciona sin internet. Usa Wi‑Fi si puedes; tarda 1 o 2 minutos.")
         }
         .alert("Ubicación desactivada", isPresented: $game.locationDenied) {
             Button("Abrir Ajustes") {
@@ -197,7 +197,8 @@ struct ContentView: View {
                     }
                 } label: { Label("Actualizar lugares de Hannover", systemImage: "arrow.clockwise") }
                 Button { askDownload = true } label: {
-                    Label(game.offlineReady ? "Actualizar mapa descargado" : "Descargar mapa de Hannover",
+                    Label(!game.offlineReady ? "Descargar mapa de Hannover"
+                          : (OfflineMap.missingNames ? "Actualizar mapa (agrega nombres de calles)" : "Actualizar mapa descargado"),
                           systemImage: "arrow.down.circle")
                 }
                 if game.offlineReady {

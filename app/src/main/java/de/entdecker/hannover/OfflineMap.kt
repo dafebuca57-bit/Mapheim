@@ -55,7 +55,8 @@ object OfflineMap {
     const val KIND_COUNT = 24
 
     private const val FILE = "hannover_map.bin"
-    private const val MAGIC = 0x4D504831 // "MPH1"
+    private const val MAGIC = 0x4D504831 // "MPH1" (sin nombres)
+    private const val MAGIC2 = 0x4D504832 // "MPH2" (con nombres de calles)
     const val CELL = 0.0002f
 
     private val ENDPOINTS = listOf(
@@ -100,6 +101,7 @@ object OfflineMap {
 
     class Data(
         val kinds: ByteArray,
+        val names: Array<String?>,
         val starts: IntArray,
         val counts: IntArray,
         val xs: FloatArray,
@@ -152,6 +154,9 @@ object OfflineMap {
 
     val ready: Boolean get() = data != null
 
+    /** true si el mapa descargado es de antes y no trae nombres de calles. */
+    val missingNames: Boolean get() = data?.names?.all { it == null } ?: false
+
     fun fileSizeMb(): Double = File(app.filesDir, FILE).length() / 1_048_576.0
 
     fun init(ctx: Context) {
@@ -173,7 +178,7 @@ object OfflineMap {
                 val tmp = File(app.filesDir, "$FILE.tmp")
                 var features = 0
                 DataOutputStream(BufferedOutputStream(FileOutputStream(tmp))).use { out ->
-                    out.writeInt(MAGIC)
+                    out.writeInt(MAGIC2)
                     STEPS.forEachIndexed { i, (label, query) ->
                         main.post { progress("Descargando $label\n(${i + 1} de ${STEPS.size})") }
                         val chunk = fetchStep(query)
@@ -324,17 +329,19 @@ object OfflineMap {
         val kind = classify(tags)
         if (kind < 0) return 0
         val isArea = kind < RIVER
+        val named = kind == RIVER || kind == PATH || kind == MINOR || kind == SECONDARY || kind == MAJOR
+        val name = if (named) (tags["name"] ?: "").take(60) else ""
         var written = 0
         if (type == "relation") {
             if (!isArea) return 0
-            for (ring in rings(outers)) { write(out, kind, ring); written++ }
+            for (ring in rings(outers)) { write(out, kind, ring, ""); written++ }
         } else {
             val g = geom ?: return 0
             if (g.size < 2) return 0
             if (isArea) {
                 if (g.size < 4 || g.first() != g.last()) return 0
             }
-            write(out, kind, g); written++
+            write(out, kind, g, name); written++
         }
         return written
     }
@@ -394,8 +401,9 @@ object OfflineMap {
         return out
     }
 
-    private fun write(out: DataOutputStream, kind: Int, pts: LongArray) {
+    private fun write(out: DataOutputStream, kind: Int, pts: LongArray, name: String) {
         out.writeByte(kind)
+        out.writeUTF(name)
         out.writeInt(pts.size)
         for (p in pts) {
             out.writeInt((p shr 32).toInt())
@@ -414,16 +422,20 @@ object OfflineMap {
         val f = File(app.filesDir, FILE)
         if (!f.exists()) return null
         val kinds = ArrayList<Byte>()
+        val names = ArrayList<String?>()
         val starts = ArrayList<Int>()
         val counts = ArrayList<Int>()
         val xs = FloatList()
         val ys = FloatList()
         DataInputStream(BufferedInputStream(FileInputStream(f), 1 shl 16)).use { inp ->
-            if (inp.readInt() != MAGIC) return null
+            val magic = inp.readInt()
+            if (magic != MAGIC && magic != MAGIC2) return null
+            val withNames = magic == MAGIC2
             while (true) {
                 val kind = try { inp.readByte() } catch (e: EOFException) { break }
+                val name = if (withNames) inp.readUTF() else ""
                 val n = inp.readInt()
-                kinds.add(kind); starts.add(xs.n); counts.add(n)
+                kinds.add(kind); names.add(name.ifEmpty { null }); starts.add(xs.n); counts.add(n)
                 for (i in 0 until n) {
                     val lat = inp.readInt() / 1e7
                     val lon = inp.readInt() / 1e7
@@ -452,7 +464,7 @@ object OfflineMap {
         val grid = HashMap<Int, IntArray>(cells.size * 2)
         for ((k, v) in cells) grid[k] = v.toIntArray()
         return Data(
-            kinds.toByteArray(), starts.toIntArray(), counts.toIntArray(),
+            kinds.toByteArray(), names.toTypedArray(), starts.toIntArray(), counts.toIntArray(),
             xs.a.copyOf(xs.n), ys.a.copyOf(ys.n), minX, minY, maxX, maxY, grid
         )
     }
@@ -484,7 +496,21 @@ object OfflineMap {
 }
 
 /** Dibuja el mapa descargado cuando no hay internet (o si se prefiere). */
-class OfflineMapOverlay(private val density: Float) : Overlay() {
+class OfflineMapOverlay(private val density: Float, labelFace: android.graphics.Typeface?) : Overlay() {
+    private val text = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        textAlign = Paint.Align.CENTER
+        typeface = labelFace
+    }
+    private val halo = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        textAlign = Paint.Align.CENTER
+        typeface = labelFace
+        style = Paint.Style.STROKE
+        strokeJoin = Paint.Join.ROUND
+        color = Color.argb(225, 248, 244, 236)
+    }
+    private val placed = ArrayList<android.graphics.RectF>()
+    private val placedNames = HashMap<String, MutableList<Float>>()
+    private var lx = 0f; private var ly = 0f; private var la = 0f; private var llen = 0f
     private val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
     private val line = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
@@ -570,6 +596,93 @@ class OfflineMapOverlay(private val density: Float) : Overlay() {
         lines(c, d, OfflineMap.MINOR, colors[5], minorW)
         lines(c, d, OfflineMap.SECONDARY, colors[6], secW)
         lines(c, d, OfflineMap.MAJOR, colors[7], majW)
+
+        if (z >= 14.0) labels(c, d, z, mv.width.toFloat(), mv.height.toFloat())
+    }
+
+    /** Punto medio de la calle en pantalla, con su ángulo y largo. */
+    private fun midpoint(d: OfflineMap.Data, i: Int) {
+        val s = d.starts[i]; val n = d.counts[i]
+        var total = 0f
+        for (k in s + 1 until s + n) {
+            val dx = (d.xs[k] - d.xs[k - 1]) * sx; val dy = (d.ys[k] - d.ys[k - 1]) * sy
+            total += kotlin.math.sqrt(dx * dx + dy * dy)
+        }
+        llen = total
+        var acc = 0f
+        for (k in s + 1 until s + n) {
+            val ax = tx0 + (d.xs[k - 1] - gx0) * sx; val ay = ty0 + (d.ys[k - 1] - gy0) * sy
+            val bx = tx0 + (d.xs[k] - gx0) * sx; val by = ty0 + (d.ys[k] - gy0) * sy
+            val seg = kotlin.math.sqrt((bx - ax) * (bx - ax) + (by - ay) * (by - ay))
+            if (acc + seg >= total / 2 || k == s + n - 1) {
+                val t = if (seg > 0f) ((total / 2 - acc) / seg).coerceIn(0f, 1f) else 0f
+                lx = ax + (bx - ax) * t; ly = ay + (by - ay) * t
+                var deg = Math.toDegrees(kotlin.math.atan2((by - ay).toDouble(), (bx - ax).toDouble())).toFloat()
+                if (deg > 90f) deg -= 180f else if (deg < -90f) deg += 180f
+                la = deg
+                return
+            }
+            acc += seg
+        }
+        lx = tx0 + (d.xs[s] - gx0) * sx; ly = ty0 + (d.ys[s] - gy0) * sy; la = 0f
+    }
+
+    private fun labels(c: Canvas, d: OfflineMap.Data, z: Double, w: Float, h: Float) {
+        placed.clear()
+        placedNames.clear()
+        var count = 0
+        val order = intArrayOf(OfflineMap.MAJOR, OfflineMap.SECONDARY, OfflineMap.RIVER, OfflineMap.MINOR, OfflineMap.PATH)
+        for (kind in order) {
+            val minZ = when (kind) {
+                OfflineMap.MAJOR, OfflineMap.SECONDARY -> 14.5
+                OfflineMap.RIVER -> 14.0
+                OfflineMap.MINOR -> 16.0
+                else -> 17.0
+            }
+            if (z < minZ) continue
+            val big = kind == OfflineMap.MAJOR || kind == OfflineMap.SECONDARY
+            text.textSize = (if (big) 11.5f else 10.5f) * density
+            halo.textSize = text.textSize
+            halo.strokeWidth = 3.5f * density
+            text.color = if (kind == OfflineMap.RIVER) Color.rgb(40, 85, 120) else Color.rgb(70, 50, 32)
+            val th = text.textSize
+            val b = buckets[kind]
+            for (j in 0 until sizes[kind]) {
+                if (count >= 90) return
+                val i = b[j]
+                val name = d.names[i] ?: continue
+                midpoint(d, i)
+                if (lx < -20 || ly < -20 || lx > w + 20 || ly > h + 20) continue
+                val tw = text.measureText(name)
+                if (llen < tw * 1.15f) continue
+                // no repetir la misma calle muy cerca
+                val prev = placedNames[name]
+                if (prev != null) {
+                    var near = false
+                    var k = 0
+                    while (k < prev.size) {
+                        val dx = prev[k] - lx; val dy = prev[k + 1] - ly
+                        if (dx * dx + dy * dy < (260f * density) * (260f * density)) { near = true; break }
+                        k += 2
+                    }
+                    if (near) continue
+                }
+                val rad = Math.toRadians(la.toDouble())
+                val cs = kotlin.math.abs(kotlin.math.cos(rad)).toFloat()
+                val sn = kotlin.math.abs(kotlin.math.sin(rad)).toFloat()
+                val bw = cs * tw + sn * th; val bh = sn * tw + cs * th
+                val r = android.graphics.RectF(lx - bw / 2, ly - bh / 2, lx + bw / 2, ly + bh / 2)
+                if (placed.any { android.graphics.RectF.intersects(it, r) }) continue
+                placed.add(r)
+                placedNames.getOrPut(name) { ArrayList() }.apply { add(lx); add(ly) }
+                c.save()
+                c.rotate(la, lx, ly)
+                c.drawText(name, lx, ly + th * 0.35f, halo)
+                c.drawText(name, lx, ly + th * 0.35f, text)
+                c.restore()
+                count++
+            }
+        }
     }
 
     private fun build(d: OfflineMap.Data, i: Int, close: Boolean) {

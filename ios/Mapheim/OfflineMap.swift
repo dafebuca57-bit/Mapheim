@@ -12,6 +12,9 @@ enum MapKind {
 /// Datos del mapa ya cargados. No cambian después de crearse, así que MapKit puede leerlos desde cualquier hilo.
 final class OfflineMapData {
     let kinds: [UInt8]
+    let names: [String?]
+    /// Punto medio, ángulo y largo de cada calle con nombre (en puntos de mapa).
+    let labelX: [Double], labelY: [Double], labelAngle: [Double], labelLen: [Double]
     let starts: [Int]
     let counts: [Int]
     let xs: [Double]
@@ -20,8 +23,30 @@ final class OfflineMapData {
     let grid: [Int64: [Int32]]
     static let cell = 10_000.0 // ~1 km en puntos de mapa
 
-    init(kinds: [UInt8], starts: [Int], counts: [Int], xs: [Double], ys: [Double]) {
-        self.kinds = kinds; self.starts = starts; self.counts = counts; self.xs = xs; self.ys = ys
+    init(kinds: [UInt8], names: [String?], starts: [Int], counts: [Int], xs: [Double], ys: [Double]) {
+        self.kinds = kinds; self.names = names; self.starts = starts; self.counts = counts; self.xs = xs; self.ys = ys
+        var lx = [Double](repeating: .nan, count: kinds.count), ly = lx, la = lx, ll = lx
+        for i in 0..<kinds.count where names[i] != nil && counts[i] >= 2 {
+            let s = starts[i], n = counts[i]
+            var total = 0.0
+            for k in (s + 1)..<(s + n) { total += hypot(xs[k] - xs[k - 1], ys[k] - ys[k - 1]) }
+            var acc = 0.0
+            for k in (s + 1)..<(s + n) {
+                let seg = hypot(xs[k] - xs[k - 1], ys[k] - ys[k - 1])
+                if acc + seg >= total / 2 || k == s + n - 1 {
+                    let t = seg > 0 ? min(1, max(0, (total / 2 - acc) / seg)) : 0
+                    lx[i] = xs[k - 1] + (xs[k] - xs[k - 1]) * t
+                    ly[i] = ys[k - 1] + (ys[k] - ys[k - 1]) * t
+                    var a = atan2(ys[k] - ys[k - 1], xs[k] - xs[k - 1])
+                    if a > .pi / 2 { a -= .pi } else if a < -.pi / 2 { a += .pi }
+                    la[i] = a
+                    break
+                }
+                acc += seg
+            }
+            ll[i] = total
+        }
+        labelX = lx; labelY = ly; labelAngle = la; labelLen = ll
         var x0 = [Double](repeating: 0, count: kinds.count), y0 = x0, x1 = x0, y1 = x0
         var g: [Int64: [Int32]] = [:]
         for i in 0..<kinds.count {
@@ -72,6 +97,12 @@ enum OfflineMap {
     }
     static func setCurrent(_ d: OfflineMapData?) {
         lock.lock(); _current = d; lock.unlock()
+    }
+
+    /// true si el mapa descargado es de antes y no trae nombres de calles.
+    static var missingNames: Bool {
+        guard let d = current else { return false }
+        return !d.names.contains { $0 != nil }
     }
 
     static var fileURL: URL {
@@ -128,7 +159,7 @@ enum OfflineMap {
     /// Descarga todo, guarda el archivo y devuelve cuántas figuras trajo.
     static func download(progress: (String) async -> Void) async throws -> Int {
         var out = Data()
-        out.append(contentsOf: Array("MPH1".utf8))
+        out.append(contentsOf: Array("MPH2".utf8))
         var total = 0
         for (i, step) in steps.enumerated() {
             await progress("Descargando \(step.0)\n(\(i + 1) de \(steps.count))")
@@ -169,6 +200,8 @@ enum OfflineMap {
             let kind = classify(tags)
             if kind == 255 { continue }
             let isArea = kind < MapKind.river
+            let named = [MapKind.river, MapKind.path, MapKind.minor, MapKind.secondary, MapKind.major].contains(kind)
+            let name = named ? String((tags["name"] ?? "").prefix(60)) : ""
             if (el["type"] as? String) == "relation" {
                 guard isArea, let members = el["members"] as? [[String: Any]] else { continue }
                 var outers: [[Int64]] = []
@@ -178,13 +211,13 @@ enum OfflineMap {
                     let pts = points(g)
                     if pts.count >= 2 { outers.append(pts) }
                 }
-                for ring in rings(outers) { write(&out, kind, ring); count += 1 }
+                for ring in rings(outers) { write(&out, kind, ring, ""); count += 1 }
             } else {
                 guard let g = el["geometry"] as? [Any] else { continue }
                 let pts = points(g)
                 if pts.count < 2 { continue }
                 if isArea && (pts.count < 4 || pts.first != pts.last) { continue }
-                write(&out, kind, pts); count += 1
+                write(&out, kind, pts, name); count += 1
             }
         }
         return (out, count)
@@ -256,8 +289,12 @@ enum OfflineMap {
         return out
     }
 
-    private static func write(_ out: inout Data, _ kind: UInt8, _ pts: [Int64]) {
+    private static func write(_ out: inout Data, _ kind: UInt8, _ pts: [Int64], _ name: String) {
         out.append(kind)
+        let nameBytes = Array(name.utf8.prefix(1000))
+        var len = UInt16(nameBytes.count).littleEndian
+        withUnsafeBytes(of: &len) { out.append(contentsOf: $0) }
+        out.append(contentsOf: nameBytes)
         var n = UInt32(pts.count).littleEndian
         withUnsafeBytes(of: &n) { out.append(contentsOf: $0) }
         for p in pts {
@@ -271,19 +308,33 @@ enum OfflineMap {
     // MARK: Lectura
 
     static func load() -> OfflineMapData? {
-        guard let data = try? Data(contentsOf: fileURL), data.count > 4,
-              data.prefix(4) == Data("MPH1".utf8) else { return nil }
+        guard let data = try? Data(contentsOf: fileURL), data.count > 4 else { return nil }
+        let magic = data.prefix(4)
+        let withNames = magic == Data("MPH2".utf8)
+        guard withNames || magic == Data("MPH1".utf8) else { return nil }
         var kinds: [UInt8] = [], starts: [Int] = [], counts: [Int] = []
+        var names: [String?] = []
         var xs: [Double] = [], ys: [Double] = []
         data.withUnsafeBytes { (raw: UnsafeRawBufferPointer) in
             var o = 4
             let end = raw.count
             while o + 5 <= end {
                 let kind = raw[o]
-                let n = Int(UInt32(littleEndian: raw.loadUnaligned(fromByteOffset: o + 1, as: UInt32.self)))
-                o += 5
+                o += 1
+                var name: String? = nil
+                if withNames {
+                    guard o + 2 <= end else { break }
+                    let len = Int(UInt16(littleEndian: raw.loadUnaligned(fromByteOffset: o, as: UInt16.self)))
+                    o += 2
+                    guard o + len <= end else { break }
+                    if len > 0 { name = String(decoding: UnsafeRawBufferPointer(rebasing: raw[o..<(o + len)]), as: UTF8.self) }
+                    o += len
+                }
+                guard o + 4 <= end else { break }
+                let n = Int(UInt32(littleEndian: raw.loadUnaligned(fromByteOffset: o, as: UInt32.self)))
+                o += 4
                 if o + n * 8 > end { break }
-                kinds.append(kind); starts.append(xs.count); counts.append(n)
+                kinds.append(kind); names.append(name); starts.append(xs.count); counts.append(n)
                 for _ in 0..<n {
                     let lat = Double(Int32(littleEndian: raw.loadUnaligned(fromByteOffset: o, as: Int32.self))) / 1e7
                     let lon = Double(Int32(littleEndian: raw.loadUnaligned(fromByteOffset: o + 4, as: Int32.self))) / 1e7
@@ -294,7 +345,7 @@ enum OfflineMap {
             }
         }
         guard !kinds.isEmpty else { return nil }
-        return OfflineMapData(kinds: kinds, starts: starts, counts: counts, xs: xs, ys: ys)
+        return OfflineMapData(kinds: kinds, names: names, starts: starts, counts: counts, xs: xs, ys: ys)
     }
 
     // MARK: Colores
@@ -416,5 +467,77 @@ final class OfflineMapRenderer: MKOverlayRenderer {
         stroke(MapKind.minor, pal.road, minorW)
         stroke(MapKind.secondary, pal.secondary, secW)
         stroke(MapKind.major, pal.major, majW)
+
+        if z >= 14 { drawLabels(d, mapRect, zs: zs, z: z, ctx: ctx) }
+    }
+
+    private static let roadFont = UIFont(name: "Cinzel-Bold", size: 11.5) ?? .boldSystemFont(ofSize: 11.5)
+    private static let smallFont = UIFont(name: "Cinzel-Bold", size: 10.5) ?? .boldSystemFont(ofSize: 10.5)
+    private static let inkColor = UIColor(red: 70 / 255, green: 50 / 255, blue: 32 / 255, alpha: 1)
+    private static let riverInk = UIColor(red: 40 / 255, green: 85 / 255, blue: 120 / 255, alpha: 1)
+    private static let haloColor = UIColor(red: 248 / 255, green: 244 / 255, blue: 236 / 255, alpha: 0.88)
+
+    /// Nombres de calles. La elección depende solo de la zona y el zoom, para que
+    /// los mosaicos vecinos dibujen las mismas etiquetas y no se corten.
+    private func drawLabels(_ d: OfflineMapData, _ mapRect: MKMapRect, zs: Double, z: Double, ctx: CGContext) {
+        let cell = 300 / zs
+        let half = 170 / zs
+        let x0 = floor((mapRect.minX - half) / cell) * cell
+        let y0 = floor((mapRect.minY - half) / cell) * cell
+        let x1 = ceil((mapRect.maxX + half) / cell) * cell
+        let y1 = ceil((mapRect.maxY + half) / cell) * cell
+        let area = MKMapRect(x: x0, y: y0, width: x1 - x0, height: y1 - y0)
+
+        func minZoom(_ k: UInt8) -> Double? {
+            switch k {
+            case MapKind.major, MapKind.secondary: return 14.5
+            case MapKind.river: return 14
+            case MapKind.minor: return 16
+            case MapKind.path: return 17
+            default: return nil
+            }
+        }
+
+        // Por celda: una etiqueta por tipo de vía (la calle más larga)
+        var best: [String: (Int, Double)] = [:]
+        for i in d.query(area) {
+            guard let name = d.names[i], let mz = minZoom(d.kinds[i]), z >= mz, !d.labelX[i].isNaN else { continue }
+            let lx = d.labelX[i], ly = d.labelY[i]
+            guard lx >= x0, lx < x1, ly >= y0, ly < y1 else { continue }
+            let big = d.kinds[i] == MapKind.major || d.kinds[i] == MapKind.secondary
+            let font = big ? Self.roadFont : Self.smallFont
+            let widthPts = (name as NSString).size(withAttributes: [.font: font]).width
+            if d.labelLen[i] * zs < Double(widthPts) * 1.15 { continue }
+            let key = "\(Int(floor(lx / cell)))|\(Int(floor(ly / cell)))|\(d.kinds[i] == MapKind.minor || d.kinds[i] == MapKind.path ? 0 : 1)"
+            if let cur = best[key], cur.1 >= d.labelLen[i] { continue }
+            best[key] = (i, d.labelLen[i])
+        }
+        if best.isEmpty { return }
+
+        UIGraphicsPushContext(ctx)
+        defer { UIGraphicsPopContext() }
+        let visible = mapRect.insetBy(dx: -half, dy: -half)
+        for (_, entry) in best {
+            let i = entry.0
+            let mp = MKMapPoint(x: d.labelX[i], y: d.labelY[i])
+            guard visible.contains(mp), let name = d.names[i] else { continue }
+            let big = d.kinds[i] == MapKind.major || d.kinds[i] == MapKind.secondary
+            let font = big ? Self.roadFont : Self.smallFont
+            let ink = d.kinds[i] == MapKind.river ? Self.riverInk : Self.inkColor
+            let haloText = NSAttributedString(string: name, attributes: [
+                .font: font, .strokeColor: Self.haloColor, .strokeWidth: 9, .foregroundColor: UIColor.clear
+            ])
+            let inkText = NSAttributedString(string: name, attributes: [.font: font, .foregroundColor: ink])
+            let size = inkText.size()
+            let p = point(for: mp)
+            ctx.saveGState()
+            ctx.translateBy(x: p.x, y: p.y)
+            ctx.rotate(by: CGFloat(d.labelAngle[i]))
+            ctx.scaleBy(x: CGFloat(1 / zs), y: CGFloat(1 / zs))
+            let origin = CGPoint(x: -size.width / 2, y: -size.height / 2)
+            haloText.draw(at: origin)
+            inkText.draw(at: origin)
+            ctx.restoreGState()
+        }
     }
 }
