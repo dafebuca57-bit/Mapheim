@@ -167,6 +167,9 @@ struct GameMapView: UIViewRepresentable {
         let fog = FogOverlay()
         private var fogRenderer: FogRenderer?
         private var tiles: ThemedTileOverlay?
+        private var vector: OfflineMapOverlay?
+        private var vectorRenderer: OfflineMapRenderer?
+        private var vectorStyle = ""
         private let player = PlayerAnnotation()
         private var playerAdded = false
         private var playerStyle = ""
@@ -201,12 +204,32 @@ struct GameMapView: UIViewRepresentable {
         }
 
         func applyTheme(_ map: MKMapView) {
-            let id = parent.game.equippedId(.map)
+            let g = parent.game
+            let id = g.equippedId(.map)
+
+            // Mapa descargado: siempre debajo de los mosaicos, se ve cuando estos no cargan
+            if g.offlineReady && vector == nil {
+                let v = OfflineMapOverlay()
+                vector = v
+                map.insertOverlay(v, at: 0, level: .aboveLabels)
+            }
+            if let r = vectorRenderer, vectorStyle != id {
+                r.palette = OfflineMap.palette(id)
+                vectorStyle = id
+                r.setNeedsDisplay()
+            }
+
+            let wantTiles = !(g.offlinePreferred && g.offlineReady)
+            if !wantTiles {
+                if let old = tiles { map.removeOverlay(old); tiles = nil }
+                return
+            }
             if tiles?.styleId == id { return }
             if let old = tiles { map.removeOverlay(old) }
             let t = ThemedTileOverlay(styleId: id)
             tiles = t
-            map.insertOverlay(t, at: 0, level: .aboveLabels)
+            if let v = vector { map.insertOverlay(t, above: v) }
+            else { map.insertOverlay(t, at: 0, level: .aboveLabels) }
         }
 
         func sync(_ map: MKMapView) {
@@ -270,6 +293,13 @@ struct GameMapView: UIViewRepresentable {
 
         func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
             if let t = overlay as? MKTileOverlay { return MKTileOverlayRenderer(tileOverlay: t) }
+            if overlay is OfflineMapOverlay {
+                let r = OfflineMapRenderer(overlay: overlay)
+                vectorStyle = parent.game.equippedId(.map)
+                r.palette = OfflineMap.palette(vectorStyle)
+                vectorRenderer = r
+                return r
+            }
             if overlay is FogOverlay {
                 let r = FogRenderer(overlay: overlay)
                 r.fogColor = ShopCatalog.fogColor(parent.game.equippedId(.fog)).cgColor

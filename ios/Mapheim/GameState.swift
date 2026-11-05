@@ -31,6 +31,9 @@ final class GameState: NSObject, ObservableObject, CLLocationManagerDelegate {
     @Published private(set) var equipped: [String: String] = [:]
     @Published var testMode = false { didSet { defaults.set(testMode, forKey: "test") } }
     @Published var locationDenied = false
+    @Published private(set) var offlineReady = false
+    @Published var offlinePreferred = false { didSet { defaults.set(offlinePreferred, forKey: "offlinePreferred") } }
+    @Published private(set) var downloadingMap = false
 
     let events = PassthroughSubject<GameEvent, Never>()
 
@@ -82,6 +85,41 @@ final class GameState: NSObject, ObservableObject, CLLocationManagerDelegate {
             }
         }
         Task { await loadPois() }
+        offlinePreferred = defaults.bool(forKey: "offlinePreferred")
+        Task.detached(priority: .utility) {
+            if let d = OfflineMap.load() {
+                OfflineMap.setCurrent(d)
+                await MainActor.run { GameState.shared.offlineReady = true }
+            }
+        }
+    }
+
+    // MARK: - Mapa sin conexión
+
+    /// Descarga el mapa de Hannover (y los lugares si faltan). Devuelve el mensaje para el usuario.
+    func downloadOfflineMap(progress: @escaping @MainActor (String) -> Void) async -> String {
+        if downloadingMap { return "El mapa ya se está descargando" }
+        await MainActor.run { downloadingMap = true }
+        defer { Task { @MainActor in GameState.shared.downloadingMap = false } }
+        if !PoiRepository.hasCache {
+            await progress("Descargando lugares de Hannover")
+            if (try? await PoiRepository.fetch()) != nil {
+                let all = PoiRepository.loadAll()
+                await MainActor.run { setPois(all) }
+            }
+        }
+        do {
+            _ = try await OfflineMap.download { step in await progress(step) }
+            guard let d = OfflineMap.load() else { throw URLError(.cannotParseResponse) }
+            OfflineMap.setCurrent(d)
+            await MainActor.run {
+                offlineReady = true
+                revision += 1
+            }
+            return "ᛟ Mapa de Hannover descargado ᛟ\n\(fmt(OfflineMap.fileSizeMB, 1)) MB · ya funciona sin internet"
+        } catch {
+            return "No se pudo descargar el mapa.\nRevisa tu conexión e inténtalo otra vez."
+        }
     }
 
     // MARK: - Lugares

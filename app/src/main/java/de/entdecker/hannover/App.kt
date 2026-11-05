@@ -16,5 +16,6 @@ class App : Application() {
         PinStore.init(this)
         Shop.init(this)
         GameState.init(this)
+        OfflineMap.init(this)
     }
 }

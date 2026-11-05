@@ -19,6 +19,7 @@ App Android tipo Valheim: el mapa empieza cubierto de niebla y se despeja por do
   - 10 por lugar, 25 por lugar famoso, 50 por monumento de Alemania, 40 por ciudad nueva.
   - Hazañas: de 50 a 5000 ojos.
 - El mercader (escudo del ojo): estilos de mapa (biomas), colores de niebla, marcadores del jugador (antorcha, escudo, piedra rúnica, fuego fatuo, núcleo ardiente) y marcos de pines.
+- Mapa sin conexión: menú ⋮ → **Descargar mapa de Hannover**. Baja de OpenStreetMap las calles, senderos, ríos, lagos, parques y bosques (unos 5 a 15 MB) y la app dibuja el mapa sola cuando no hay internet, con los colores del estilo equipado. También se puede elegir **Usar siempre el mapa descargado** para no gastar datos.
 - Modo prueba (menú ⋮): mantén presionado el mapa y elige "simular que estoy aquí".
 
 ## Cómo obtener el APK

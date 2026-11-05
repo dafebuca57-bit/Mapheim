@@ -32,6 +32,7 @@ struct ContentView: View {
     @State private var banners: [Banner] = []
     @State private var current: Banner?
     @State private var confirmReset = false
+    @State private var askDownload = false
     private let commands = MapCommands()
 
     var body: some View {
@@ -74,6 +75,21 @@ struct ContentView: View {
                 }
             }
             .padding(16)
+
+            // Créditos del mapa (obligatorios)
+            VStack {
+                Spacer()
+                HStack {
+                    Text("© OpenStreetMap")
+                        .font(.system(size: 10))
+                        .foregroundStyle(V.muted)
+                        .padding(.horizontal, 6).padding(.vertical, 2)
+                        .background(V.woodDark.opacity(0.7))
+                    Spacer()
+                }
+            }
+            .padding(.leading, 6).padding(.bottom, 4)
+            .allowsHitTesting(false)
         }
         .preferredColorScheme(.dark)
         .sheet(item: $sheet) { which in
@@ -89,6 +105,14 @@ struct ContentView: View {
             }
         } message: {
             Text("La niebla vuelve a cubrir el mapa y se pierden lugares, kilómetros y hazañas. Tus pines, tus Ojos de Greydwarf y lo que compraste se conservan.")
+        }
+        .alert(game.offlineReady ? "Actualizar mapa" : "Mapa sin conexión", isPresented: $askDownload) {
+            Button("Cancelar", role: .cancel) {}
+            Button("Descargar") { startDownload() }
+        } message: {
+            Text(game.offlineReady
+                 ? "Vuelve a descargar las calles, senderos, agua, parques y bosques de Hannover para tener los cambios más recientes."
+                 : "Se descargan las calles, senderos, ríos, lagos, parques y bosques de Hannover (unos 5 a 15 MB). Después el mapa funciona sin internet. Usa Wi‑Fi si puedes; tarda 1 o 2 minutos.")
         }
         .alert("Ubicación desactivada", isPresented: $game.locationDenied) {
             Button("Abrir Ajustes") {
@@ -172,6 +196,13 @@ struct ContentView: View {
                         show(msg, V.moss)
                     }
                 } label: { Label("Actualizar lugares de Hannover", systemImage: "arrow.clockwise") }
+                Button { askDownload = true } label: {
+                    Label(game.offlineReady ? "Actualizar mapa descargado" : "Descargar mapa de Hannover",
+                          systemImage: "arrow.down.circle")
+                }
+                if game.offlineReady {
+                    Toggle(isOn: $game.offlinePreferred) { Label("Usar siempre el mapa descargado", systemImage: "map") }
+                }
                 Toggle(isOn: $game.testMode) { Label("Modo prueba", systemImage: "wand.and.stars") }
                 Button(role: .destructive) { confirmReset = true } label: { Label("Borrar progreso", systemImage: "trash") }
             } label: {
@@ -259,6 +290,17 @@ struct ContentView: View {
                 sheet = .addPin(lat: p.lat, lon: p.lon, fromLongPress: false)
             }
             .presentationDetents([.height(260)])
+        }
+    }
+
+    // MARK: Mapa sin conexión
+
+    private func startDownload() {
+        if game.downloadingMap { show("El mapa ya se está descargando", V.muted); return }
+        show("Descargando el mapa de Hannover\nTarda 1 o 2 minutos", V.muted)
+        Task {
+            let msg = await game.downloadOfflineMap { step in show(step, V.muted) }
+            show(msg, msg.hasPrefix("ᛟ") ? V.moss : V.muted)
         }
     }
 

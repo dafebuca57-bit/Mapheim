@@ -11,6 +11,9 @@ import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Build
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
 import android.os.Bundle
 import android.text.InputType
 import android.view.Gravity
@@ -60,6 +63,12 @@ class MainActivity : AppCompatActivity(), GameState.Listener {
     private var cinzelBold: Typeface? = null
 
     private var follow = true
+    private var online = true
+    private lateinit var offlineOverlay: OfflineMapOverlay
+    private val netCallback = object : ConnectivityManager.NetworkCallback() {
+        override fun onAvailable(network: Network) { runOnUiThread { online = isOnlineNow(); applyMapMode() } }
+        override fun onLost(network: Network) { runOnUiThread { online = isOnlineNow(); applyMapMode() } }
+    }
     private var centeredOnce = false
 
     private val bannerQueue = ArrayDeque<Pair<String, Int>>()
@@ -137,6 +146,8 @@ class MainActivity : AppCompatActivity(), GameState.Listener {
         map.overlayManager.tilesOverlay.loadingLineColor = color(R.color.fog)
 
         val d = resources.displayMetrics.density
+        offlineOverlay = OfflineMapOverlay(d)
+        map.overlays.add(offlineOverlay)
         map.overlays.add(MapEventsOverlay(object : MapEventsReceiver {
             override fun singleTapConfirmedHelper(p: GeoPoint?): Boolean = false
             override fun longPressHelper(p: GeoPoint?): Boolean {
@@ -150,6 +161,13 @@ class MainActivity : AppCompatActivity(), GameState.Listener {
         map.overlays.add(PinOverlay(this, d) { pin -> showPin(pin) })
         map.overlays.add(PlayerOverlay(d))
 
+        online = isOnlineNow()
+        try {
+            getSystemService(ConnectivityManager::class.java).registerDefaultNetworkCallback(netCallback)
+        } catch (_: Exception) { }
+        OfflineMap.onChange = { applyMapMode() }
+        applyMapMode()
+
         if (GameState.hasPos) {
             map.controller.setZoom(16.5)
             map.controller.setCenter(GeoPoint(GameState.posLat, GameState.posLon))
@@ -158,6 +176,26 @@ class MainActivity : AppCompatActivity(), GameState.Listener {
             map.controller.setZoom(14.5)
             map.controller.setCenter(GeoPoint(52.3745, 9.7385)) // Kröpcke
         }
+    }
+
+    private fun isOnlineNow(): Boolean {
+        val cm = getSystemService(ConnectivityManager::class.java) ?: return true
+        val caps = cm.getNetworkCapabilities(cm.activeNetwork) ?: return false
+        return caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+    }
+
+    /** Sin internet (o si se prefiere) se dibuja el mapa descargado en vez de los mosaicos. */
+    private fun applyMapMode() {
+        val useOffline = OfflineMap.ready && (OfflineMap.preferOffline || !online)
+        map.overlayManager.tilesOverlay.isEnabled = !useOffline
+        offlineOverlay.isEnabled = useOffline
+        map.invalidate()
+    }
+
+    override fun onDestroy() {
+        try { getSystemService(ConnectivityManager::class.java).unregisterNetworkCallback(netCallback) } catch (_: Exception) { }
+        if (OfflineMap.onChange != null) OfflineMap.onChange = null
+        super.onDestroy()
     }
 
     /** Aplica el estilo de mapa equipado en la tienda. */
@@ -461,7 +499,14 @@ class MainActivity : AppCompatActivity(), GameState.Listener {
             isCheckable = true
             isChecked = GameState.testMode
         }
-        pm.menu.add(0, 3, 3, "Borrar progreso")
+        pm.menu.add(0, 5, 3, if (OfflineMap.ready) "Actualizar mapa descargado" else "Descargar mapa de Hannover")
+        if (OfflineMap.ready) {
+            pm.menu.add(0, 6, 4, "Usar siempre el mapa descargado").apply {
+                isCheckable = true
+                isChecked = OfflineMap.preferOffline
+            }
+        }
+        pm.menu.add(0, 3, 5, "Borrar progreso")
         pm.setOnMenuItemClickListener { item ->
             when (item.itemId) {
                 4 -> showPinList()
@@ -477,11 +522,47 @@ class MainActivity : AppCompatActivity(), GameState.Listener {
                         color(R.color.gold)
                     )
                 }
+                5 -> confirmDownload()
+                6 -> {
+                    OfflineMap.preferOffline = !OfflineMap.preferOffline
+                    applyMapMode()
+                    showBanner(
+                        if (OfflineMap.preferOffline) "Usando el mapa descargado\nNo gasta datos"
+                        else "Mapa en línea cuando hay internet",
+                        color(R.color.gold)
+                    )
+                }
                 3 -> confirmReset()
             }
             true
         }
         pm.show()
+    }
+
+    private fun confirmDownload() {
+        if (OfflineMap.downloading) {
+            showBanner("El mapa ya se está descargando", color(R.color.muted))
+            return
+        }
+        val msg = if (OfflineMap.ready)
+            "Vuelve a descargar las calles, senderos, agua, parques y bosques de Hannover para tener los cambios más recientes."
+        else
+            "Se descargan las calles, senderos, ríos, lagos, parques y bosques de Hannover (unos 5 a 15 MB). Después el mapa funciona sin internet. Usa Wi‑Fi si puedes; tarda 1 o 2 minutos."
+        vikingDialog(if (OfflineMap.ready) "Actualizar mapa" else "Mapa sin conexión")
+            .setMessage(msg)
+            .setNegativeButton("Cancelar", null)
+            .setPositiveButton("Descargar") { _, _ -> startDownload() }
+            .show()
+    }
+
+    private fun startDownload() {
+        if (!PoiRepository.hasCache(this)) {
+            GameState.refreshPois { }
+        }
+        OfflineMap.download(
+            progress = { step -> showBanner(step, color(R.color.muted)) },
+            done = { ok, text -> showBanner(text, color(if (ok) R.color.moss else R.color.muted)) }
+        )
     }
 
     private fun confirmReset() {
